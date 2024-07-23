@@ -1,6 +1,11 @@
 from slack_ops_reporter import app
 from slack_ops_reporter.middlewares import problem_provider
 
+import logging
+import os
+
+logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO').upper())
+
 
 @app.shortcut("new_report")
 def message_hello(ack, shortcut, client):
@@ -15,23 +20,6 @@ def message_hello(ack, shortcut, client):
                 "text": "New Report"
             },
             "blocks": [
-                # {
-                #     "type": "section",
-                #     "text": {
-                #         "type": "mrkdwn",
-                #         "text": "Which service/component that you want to report or need help with?"
-                #     },
-                #     "accessory": {
-                #         "action_id": "component_selection",
-                #         "type": "external_select",
-                #         "min_query_length": 0,
-                #         "placeholder": {
-                #             "type": "plain_text",
-                #             "text": "Select an item",
-                #             "emoji": True
-                #         }
-                #     }
-                # },
                 {
                     "type": "input",
                     "block_id": "component_input",
@@ -80,29 +68,12 @@ def handle_component_selection(ack, action, client, body):
         hash=body["view"]["hash"],
         view={
             "type": "modal",
-            "callback_id": "view_1",
+            "callback_id": "new_report",
             "title": {
                 "type": "plain_text",
                 "text": "Need Help?"
             },
             "blocks": [
-                # {
-                #     "type": "section",
-                #     "text": {
-                #         "type": "mrkdwn",
-                #         "text": "What service/component that you want to report or need help with?"
-                #     },
-                #     "accessory": {
-                #         "action_id": "component_selection",
-                #         "type": "external_select",
-                #         "min_query_length": 0,
-                #         "placeholder": {
-                #             "type": "plain_text",
-                #             "text": action["selected_option"]["text"]["text"],
-                #             "emoji": True
-                #         },
-                #     }
-                # },
                 {
                     "type": "input",
                     "block_id": "component_input",
@@ -149,7 +120,7 @@ def handle_component_selection(ack, action, client, body):
                     },
                     "element": {
                         "type": "static_select",
-                        "action_id": "priority_action",
+                        "action_id": "priority_selection",
                         "options": [
                             {
                                 "text": {
@@ -187,7 +158,7 @@ def handle_component_selection(ack, action, client, body):
                     "block_id": "additional_info_input",
                     "element": {
                         "type": "plain_text_input",
-                        "action_id": "additional_info_action",
+                        "action_id": "additional_info_input",
                         "multiline": True,
                         "min_length": 0
                     },
@@ -217,6 +188,21 @@ def problem_options(ack, context, payload, options, body):
     options = [prepare_option(item[0], item[1]) for item in component_problems]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
+
+
+@app.view("new_report")
+def handle_new_report_submission(ack, body, view, logger):
+
+    component = view['state']['values']['component_input']['component_selection']['selected_option']['value']
+    problem = view['state']['values'][f"problem_input:{component}"]['problem_selection']['selected_option']['value']
+    priority = view['state']['values']['priority_input']['priority_selection']['selected_option']['value']
+    additional_info = view['state']['values']['additional_info_input']['additional_info_input']['value']
+    logger.info(f"component = {component}")
+    logger.info(f"problem = {problem}")
+    logger.info(f"priority = {priority}")
+    logger.info(f"additional_info = {additional_info}")
+
+    ack()
 
 
 def prepare_option(text, value):
