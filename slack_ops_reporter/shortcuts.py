@@ -1,5 +1,5 @@
 from slack_ops_reporter import app
-from slack_ops_reporter import problems
+from slack_ops_reporter.middlewares import problem_provider
 
 
 @app.shortcut("new_report")
@@ -60,12 +60,14 @@ def message_hello(ack, shortcut, client):
     )
 
 
-@app.options("component_selection")
-def component_options(ack, payload):
+@app.options("component_selection",
+             middleware=[problem_provider])
+def component_options(ack, context, payload):
     keyword = payload.get("value")
 
-    components = problems.get_components(keyword)
+    components = context['problem_provider'].get_components(keyword)
     options = [prepare_option(item[0], item[1]) for item in components]
+    options.append(prepare_option("Other", "other"))
     ack(options=options)
 
 
@@ -204,14 +206,16 @@ def handle_component_selection(ack, action, client, body):
     )
 
 
-@app.options("problem_selection")
-def problem_options(ack, payload, options, body):
+@app.options("problem_selection",
+             middleware=[problem_provider])
+def problem_options(ack, context, payload, options, body):
     keyword = payload.get("value")
 
     component_value = options["block_id"].lstrip("problem_input:")
 
-    component_problems = problems.get_problems(component_value, keyword)
+    component_problems = context['problem_provider'].get_problems(component_value, keyword)
     options = [prepare_option(item[0], item[1]) for item in component_problems]
+    options.append(prepare_option("Other", "other"))
     ack(options=options)
 
 
