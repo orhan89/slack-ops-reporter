@@ -1,7 +1,10 @@
+from slack_ops_reporter.responders import OpsgenieResponder
 from datetime import datetime
 
 import csv
 import urllib.parse
+import random
+import string
 
 
 class CSVProblemTypeProvider(object):
@@ -137,3 +140,76 @@ class Problem(object):
         self.created_at = datetime.now()
         self.acknowledge_at = None
         self.responders = None
+
+    def create_private_channel(self, slack_client, members=[]):
+        channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
+
+        channel = slack_client.conversations_create(
+            name=channel_name,
+            is_private=True
+        )
+
+        self.channel_id = channel.data['channel']['id']
+
+    def invite_to_private_channel(self, slack_client, member):
+        slack_client.conversations_invite(
+            channel=self.channel_id,
+            users=member['id']
+        )
+
+    def send_summary(self, slack_client):
+
+        message = slack_client.chat_postMessage(
+            channel=self.channel_id,
+            text="Hey, we have received your request and will forward it to our Engineer",
+            attachments=[
+                {
+                    "color": "#FF0000",
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "fields": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Problem Description*\n%s" % str(self.problem_type)
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Component/Service*\n%s" % str(self.problem_type.component)
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Requested By*\n@%s" % self.requester['name']
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Priority*\n%s" % str(self.priority)
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Requested at*\n%s" % self.created_at
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Acknowledge at*\n%s" % self.acknowledge_at
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Responders*\n%s" % self.responders
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "*Additional Info*\n%s" % self.additional_info
+                                },
+                            ]
+                        }
+                    ]
+                }
+            ]
+        )
+
+        self.message_ts = message['ts']
+
+    def notify_responder(self):
+        opsgenie = OpsgenieResponder()
+        opsgenie.notify(self)

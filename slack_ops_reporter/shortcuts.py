@@ -1,11 +1,8 @@
 from slack_ops_reporter import app
-from slack_ops_reporter.middlewares import problem_provider
 from slack_ops_reporter.problems import Problem
 
 import logging
 import os
-import random
-import string
 
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO').upper())
 
@@ -47,8 +44,7 @@ def message_hello(ack, shortcut, client):
     )
 
 
-@app.options("component_selection",
-             middleware=[problem_provider])
+@app.options("component_selection")
 def component_options(ack, context, payload):
     keyword = payload.get("value")
 
@@ -149,8 +145,7 @@ def handle_component_selection(ack, action, client, body):
     )
 
 
-@app.options("problem_selection",
-             middleware=[problem_provider])
+@app.options("problem_selection")
 def problem_options(ack, context, payload, options, body):
     keyword = payload.get("value")
 
@@ -162,10 +157,8 @@ def problem_options(ack, context, payload, options, body):
     ack(options=options)
 
 
-@app.view("new_report",
-          middleware=[problem_provider])
+@app.view("new_report")
 def handle_new_report_submission(ack, context, body, client, view):
-
     ack()
 
     component_key = view['state']['values']['component_input']['component_selection']['selected_option']['value']
@@ -176,8 +169,10 @@ def handle_new_report_submission(ack, context, body, client, view):
     requester = body['user']
     problem = Problem(problem_type_key, priority_key, requester, additional_info)
 
-    channel = create_private_channel(members=[requester])
-    send_summary(channel, problem)
+    problem.create_private_channel(client)
+    problem.invite_to_private_channel(client, requester)
+    problem.send_summary(client)
+    problem.notify_responder()
 
 
 def prepare_option(text, value):
@@ -198,72 +193,3 @@ def prepare_priority_options():
             "value": priority.key
         })
     return options
-
-
-def create_private_channel(members=[]):
-    channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
-
-    channel = app.client.conversations_create(
-        name=channel_name,
-        is_private=True
-    )
-
-    for member in members:
-        app.client.conversations_invite(
-            channel=channel.data['channel']['id'],
-            users=member['id']
-        )
-
-    return channel.data['channel']
-
-
-def send_summary(channel, problem):
-
-    app.client.chat_postMessage(
-        channel=channel['id'],
-        text="Hey, we have received your request and will forward it to our Engineer",
-        attachments=[
-            {
-                "color": "#FF0000",
-                "blocks": [
-                    {
-                        "type": "section",
-                        "fields": [
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Problem Description*\n%s" % str(problem.problem_type)
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Component/Service*\n%s" % str(problem.problem_type.component)
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Requested By*\n@%s" % problem.requester['name']
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Priority*\n%s" % str(problem.priority)
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Requested at*\n%s" % problem.created_at
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Acknowledge at*\n%s" % problem.acknowledge_at
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Responders*\n%s" % problem.responders
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Additional Info*\n%s" % problem.additional_info
-                            },
-                        ]
-                    }
-                ]
-            }
-        ]
-    )
