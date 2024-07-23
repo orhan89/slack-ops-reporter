@@ -1,6 +1,6 @@
 from slack_ops_reporter import app
 from slack_ops_reporter.middlewares import problem_provider
-from slack_ops_reporter.problems import Problem, Priority
+from slack_ops_reporter.problems import Problem
 
 import logging
 import os
@@ -42,11 +42,7 @@ def message_hello(ack, shortcut, client):
                         },
                     }
                 },
-            ],
-            "submit": {
-                "type": "plain_text",
-                "text": "Submit"
-            }
+            ]
         }
     )
 
@@ -56,8 +52,8 @@ def message_hello(ack, shortcut, client):
 def component_options(ack, context, payload):
     keyword = payload.get("value")
 
-    components = context['problem_provider'].list_components(keyword)
-    options = [prepare_option(str(item), item.value) for item in components]
+    components = Problem.Component.list(keyword)
+    options = [prepare_option(str(item), item.key) for item in components]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
 
@@ -130,6 +126,7 @@ def handle_component_selection(ack, action, client, body):
                 },
                 {
                     "type": "input",
+                    "optional": True,
                     "block_id": "additional_info_input",
                     "element": {
                         "type": "plain_text_input",
@@ -157,10 +154,10 @@ def handle_component_selection(ack, action, client, body):
 def problem_options(ack, context, payload, options, body):
     keyword = payload.get("value")
 
-    component_value = options["block_id"].lstrip("problem_input:")
+    component_key = options["block_id"].lstrip("problem_input:")
 
-    problem_types = context['problem_provider'].list_problem_types(component_value, keyword)
-    options = [prepare_option(str(item), item.value) for item in problem_types]
+    problem_types = Problem.ProblemType.list(component_key, keyword)
+    options = [prepare_option(str(item), item.key) for item in problem_types]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
 
@@ -171,14 +168,13 @@ def handle_new_report_submission(ack, context, body, client, view):
 
     ack()
 
-    component_value = view['state']['values']['component_input']['component_selection']['selected_option']['value']
-    problem_value = view['state']['values'][f"problem_input:{component_value}"]['problem_selection']['selected_option']['value']
-    priority_value = view['state']['values']['priority_input']['priority_selection']['selected_option']['value']
-    additional_info_value = view['state']['values']['additional_info_input']['additional_info_input']['value']
+    component_key = view['state']['values']['component_input']['component_selection']['selected_option']['value']
+    problem_type_key = view['state']['values'][f"problem_input:{component_key}"]['problem_selection']['selected_option']['value']
+    priority_key = view['state']['values']['priority_input']['priority_selection']['selected_option']['value']
+    additional_info = view['state']['values']['additional_info_input']['additional_info_input']['value']
 
-    problem_type = context['problem_provider'].get_problem_type(problem_value)
     requester = body['user']
-    problem = Problem(problem_type, requester, Priority(priority_value), additional_info_value)
+    problem = Problem(problem_type_key, priority_key, requester, additional_info)
 
     channel = create_private_channel(members=[requester])
     send_summary(channel, problem)
@@ -193,13 +189,13 @@ def prepare_option(text, value):
 
 def prepare_priority_options():
     options = []
-    for priority in Priority.list_priorities():
+    for priority in Problem.Priority.list_priorities():
         options.append({
             "text": {
                 "type": "plain_text",
                 "text": str(priority)
             },
-            "value": priority.value
+            "value": priority.key
         })
     return options
 
@@ -223,12 +219,6 @@ def create_private_channel(members=[]):
 
 def send_summary(channel, problem):
 
-    print(type(problem.problem_type))
-    print(problem.problem_type)
-    print(type(problem.problem_type.component))
-    print(problem.problem_type.component)
-    print(type(problem.priority))
-    print(problem.priority)
     app.client.chat_postMessage(
         channel=channel['id'],
         text="Hey, we have received your request and will forward it to our Engineer",
@@ -253,19 +243,19 @@ def send_summary(channel, problem):
                             },
                             {
                                 "type": "mrkdwn",
+                                "text": "*Priority*\n%s" % str(problem.priority)
+                            },
+                            {
+                                "type": "mrkdwn",
                                 "text": "*Requested at*\n%s" % problem.created_at
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": "*Acknowledge at*\n_Not Yet_"
+                                "text": "*Acknowledge at*\n%s" % problem.acknowledge_at
                             },
                             {
                                 "type": "mrkdwn",
-                                "text": "*Responders*\n_None_"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Priority*\n%s" % str(problem.priority)
+                                "text": "*Responders*\n%s" % problem.responders
                             },
                             {
                                 "type": "mrkdwn",
