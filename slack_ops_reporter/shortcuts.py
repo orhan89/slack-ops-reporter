@@ -1,5 +1,6 @@
 from slack_ops_reporter import app
 from slack_ops_reporter.middlewares import problem_provider
+from slack_ops_reporter.problems import Problem, Priority
 
 import logging
 import os
@@ -55,8 +56,8 @@ def message_hello(ack, shortcut, client):
 def component_options(ack, context, payload):
     keyword = payload.get("value")
 
-    components = context['problem_provider'].get_components(keyword)
-    options = [prepare_option(item[0], item[1]) for item in components]
+    components = context['problem_provider'].list_components(keyword)
+    options = [prepare_option(str(item), item.value) for item in components]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
 
@@ -65,6 +66,7 @@ def component_options(ack, context, payload):
 def handle_component_selection(ack, action, client, body):
     ack()
     # selected_option = action['selected_option']
+
     client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
@@ -123,36 +125,7 @@ def handle_component_selection(ack, action, client, body):
                     "element": {
                         "type": "static_select",
                         "action_id": "priority_selection",
-                        "options": [
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "Urgent (under 30 min)"
-                                },
-                                "value": "P1"
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "High (between 30 min - 3 hours)"
-                                },
-                                "value": "P2"
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "Medium (between 3 hours - 24 hours"
-                                },
-                                "value": "P3"
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "Low (more than 24 hours)"
-                                },
-                                "value": "P4"
-                            }
-                        ]
+                        "options": prepare_priority_options()
                     }
                 },
                 {
@@ -186,38 +159,29 @@ def problem_options(ack, context, payload, options, body):
 
     component_value = options["block_id"].lstrip("problem_input:")
 
-    component_problems = context['problem_provider'].get_problems(component_value, keyword)
-    options = [prepare_option(item[0], item[1]) for item in component_problems]
+    problem_types = context['problem_provider'].list_problem_types(component_value, keyword)
+    options = [prepare_option(str(item), item.value) for item in problem_types]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
 
 
-@app.view("new_report")
-def handle_new_report_submission(ack, body, client, view, logger):
+@app.view("new_report",
+          middleware=[problem_provider])
+def handle_new_report_submission(ack, context, body, client, view):
 
-    component = view['state']['values']['component_input']['component_selection']['selected_option']['value']
-    problem = view['state']['values'][f"problem_input:{component}"]['problem_selection']['selected_option']['value']
-    priority = view['state']['values']['priority_input']['priority_selection']['selected_option']['value']
-    additional_info = view['state']['values']['additional_info_input']['additional_info_input']['value']
-
-    logger.info(f"component = {component}")
-    logger.info(f"problem = {problem}")
-    logger.info(f"priority = {priority}")
-    logger.info(f"additional_info = {additional_info}")
-
-    channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
-    channel = client.conversations_create(
-        name=channel_name,
-        is_private=True
-    )
-
-    logger.info(f"channel = {channel}")
-
-    client.conversations_invite(
-        channel=channel.data['channel']['id'],
-        users=body['user']['id']
-    )
     ack()
+
+    component_value = view['state']['values']['component_input']['component_selection']['selected_option']['value']
+    problem_value = view['state']['values'][f"problem_input:{component_value}"]['problem_selection']['selected_option']['value']
+    priority_value = view['state']['values']['priority_input']['priority_selection']['selected_option']['value']
+    additional_info_value = view['state']['values']['additional_info_input']['additional_info_input']['value']
+
+    problem_type = context['problem_provider'].get_problem_type(problem_value)
+    requester = body['user']
+    problem = Problem(problem_type, requester, Priority(priority_value), additional_info_value)
+
+    channel = create_private_channel(members=[requester])
+    send_summary(channel, problem)
 
 
 def prepare_option(text, value):
@@ -225,3 +189,91 @@ def prepare_option(text, value):
         "text": {"type": "plain_text", "text": text},
         "value": value
     }
+
+
+def prepare_priority_options():
+    options = []
+    for priority in Priority.list_priorities():
+        options.append({
+            "text": {
+                "type": "plain_text",
+                "text": str(priority)
+            },
+            "value": priority.value
+        })
+    return options
+
+
+def create_private_channel(members=[]):
+    channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
+
+    channel = app.client.conversations_create(
+        name=channel_name,
+        is_private=True
+    )
+
+    for member in members:
+        app.client.conversations_invite(
+            channel=channel.data['channel']['id'],
+            users=member['id']
+        )
+
+    return channel.data['channel']
+
+
+def send_summary(channel, problem):
+
+    print(type(problem.problem_type))
+    print(problem.problem_type)
+    print(type(problem.problem_type.component))
+    print(problem.problem_type.component)
+    print(type(problem.priority))
+    print(problem.priority)
+    app.client.chat_postMessage(
+        channel=channel['id'],
+        text="Hey, we have received your request and will forward it to our Engineer",
+        attachments=[
+            {
+                "color": "#FF0000",
+                "blocks": [
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Problem Description*\n%s" % str(problem.problem_type)
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Component/Service*\n%s" % str(problem.problem_type.component)
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Requested By*\n@%s" % problem.requester['name']
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Requested at*\n%s" % problem.created_at
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Acknowledge at*\n_Not Yet_"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Responders*\n_None_"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Priority*\n%s" % str(problem.priority)
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Additional Info*\n%s" % problem.additional_info
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    )
