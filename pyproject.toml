@@ -9,6 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 slack-bolt = "^1.19.1"
+opsgenie-sdk = "^2.1.5"
 
 
 [build-system]
