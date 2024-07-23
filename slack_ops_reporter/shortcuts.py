@@ -3,6 +3,8 @@ from slack_ops_reporter.middlewares import problem_provider
 
 import logging
 import os
+import random
+import string
 
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO').upper())
 
@@ -191,17 +193,30 @@ def problem_options(ack, context, payload, options, body):
 
 
 @app.view("new_report")
-def handle_new_report_submission(ack, body, view, logger):
+def handle_new_report_submission(ack, body, client, view, logger):
 
     component = view['state']['values']['component_input']['component_selection']['selected_option']['value']
     problem = view['state']['values'][f"problem_input:{component}"]['problem_selection']['selected_option']['value']
     priority = view['state']['values']['priority_input']['priority_selection']['selected_option']['value']
     additional_info = view['state']['values']['additional_info_input']['additional_info_input']['value']
+
     logger.info(f"component = {component}")
     logger.info(f"problem = {problem}")
     logger.info(f"priority = {priority}")
     logger.info(f"additional_info = {additional_info}")
 
+    channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
+    channel = client.conversations_create(
+        name=channel_name,
+        is_private=True
+    )
+
+    logger.info(f"channel = {channel}")
+
+    client.conversations_invite(
+        channel=channel.data['channel']['id'],
+        users=body['user']['id']
+    )
     ack()
 
 
