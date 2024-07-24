@@ -1,7 +1,7 @@
 from slack_ops_reporter import slack_app
 from slack_ops_reporter.problems import Problem
 from slack_ops_reporter.providers import defaultProblemTypeProvider
-from slack_ops_reporter.responders import OpsgenieResponder
+from slack_ops_reporter.responders import defaultResponder
 from slack_ops_reporter.slack_helpers import \
     prepare_option, \
     prepare_priority_options, \
