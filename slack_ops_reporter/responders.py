@@ -1,7 +1,8 @@
 from datetime import datetime
-from flask import request
-from slack_ops_reporter import app, defaultProblemTypeProvider
+from flask import Blueprint, request
+from slack_ops_reporter import slack_app
 from slack_ops_reporter.problems import Problem
+from slack_ops_reporter.providers import defaultProblemTypeProvider
 from slack_ops_reporter.slack_helpers import \
     invite_to_private_channel, \
     send_acknowledged_message, \
@@ -64,20 +65,20 @@ class OpsgenieResponder(Responder):
             print("Exception when calling AlertApi->create_alert: %s\n" % err)
 
     def acknowledge(self, problem, ack_at, ack_by):
-        responder_slack_user = app.client.users_lookupByEmail(email=ack_by)
+        responder_slack_user = slack_app.client.users_lookupByEmail(email=ack_by)
         responder = responder_slack_user.data['user']
 
         problem.acknowledge(ack_at, responder['name'])
         try:
-            invite_to_private_channel(app.client, problem.channel_id, responder)
+            invite_to_private_channel(slack_app.client, problem.channel_id, responder)
         except SlackApiError:
             pass
-        send_acknowledged_message(app.client, problem)
-        update_summary_message(app.client, problem, text="Hey, we have received your request and will forward it to our Engineer")
+        send_acknowledged_message(slack_app.client, problem)
+        update_summary_message(slack_app.client, problem, text="Hey, we have received your request and will forward it to our Engineer")
 
     def close(self, problem):
-        send_close_message(app.client, problem)
-        archive_private_channel(app.client, problem)
+        send_close_message(slack_app.client, problem)
+        archive_private_channel(slack_app.client, problem)
 
     def handle_webhook(self, data):
         alert = data['alert']
@@ -116,10 +117,14 @@ class OpsgenieResponder(Responder):
             self.close(problem)
 
 
+defaultResponder = OpsgenieResponder()
+bp = Blueprint('opsgenie', __name__, url_prefix='/opsgenie')
+
+
+@bp.route('/', methods=['POST'])
 def opsgenie_webhook():
     data = request.json
 
-    responder = OpsgenieResponder()
-    responder.handle_webhook(data)
+    defaultResponder.handle_webhook(data)
 
     return "OK"

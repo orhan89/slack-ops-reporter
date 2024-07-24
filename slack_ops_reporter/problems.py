@@ -1,20 +1,6 @@
 from datetime import datetime
 
-import csv
 import urllib.parse
-
-
-class CSVProblemTypeProvider(object):
-
-    def __init__(self):
-        self._parse_problem_types_csv('problem_types.csv')
-
-    def _parse_problem_types_csv(self, filename):
-        with open(filename) as csvfile:
-            reader = csv.reader(csvfile)
-            rows = list(reader)
-
-        self.problem_types = list(map(lambda row: Problem.ProblemType(row[0], row[1]), rows))
 
 
 class Problem(object):
@@ -156,3 +142,5 @@ class Problem(object):
     def acknowledge(self, acknowledge_at, responder):
         self.acknowledge_at = acknowledge_at
         self.responders = responder
+
+

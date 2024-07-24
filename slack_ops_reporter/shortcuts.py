@@ -1,5 +1,6 @@
-from slack_ops_reporter import app, defaultProblemTypeProvider
+from slack_ops_reporter import slack_app
 from slack_ops_reporter.problems import Problem
+from slack_ops_reporter.providers import defaultProblemTypeProvider
 from slack_ops_reporter.responders import OpsgenieResponder
 from slack_ops_reporter.slack_helpers import \
     prepare_option, \
@@ -14,8 +15,8 @@ import os
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO').upper())
 
 
-@app.shortcut("new_report")
-def message_hello(ack, shortcut, client):
+@slack_app.shortcut("new_report")
+def new_report(ack, shortcut, client):
     ack()
     client.views_open(
         trigger_id=shortcut["trigger_id"],
@@ -51,7 +52,7 @@ def message_hello(ack, shortcut, client):
     )
 
 
-@app.options("component_selection")
+@slack_app.options("component_selection")
 def component_options(ack, context, payload):
     keyword = payload.get("value")
 
@@ -61,7 +62,7 @@ def component_options(ack, context, payload):
     ack(options=options)
 
 
-@app.action("component_selection")
+@slack_app.action("component_selection")
 def handle_component_selection(ack, action, client, body):
     ack()
     # selected_option = action['selected_option']
@@ -152,7 +153,7 @@ def handle_component_selection(ack, action, client, body):
     )
 
 
-@app.options("problem_selection")
+@slack_app.options("problem_selection")
 def problem_options(ack, context, payload, options, body):
     keyword = payload.get("value")
 
@@ -164,7 +165,7 @@ def problem_options(ack, context, payload, options, body):
     ack(options=options)
 
 
-@app.view("new_report")
+@slack_app.view("new_report")
 def handle_new_report_submission(ack, context, body, client, view):
     ack()
 
