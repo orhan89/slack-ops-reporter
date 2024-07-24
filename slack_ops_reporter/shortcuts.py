@@ -185,5 +185,4 @@ def handle_new_report_submission(ack, context, body, client, view):
     message_ts = send_summary_message(client, problem, text="Hey, we have received your request and will forward it to our Engineer")
     problem.set_summary_message_ts(message_ts)
 
-    responder = OpsgenieResponder()
-    responder.notify(problem)
+    defaultResponder.notify(problem)
