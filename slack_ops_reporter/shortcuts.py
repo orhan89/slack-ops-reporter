@@ -171,7 +171,7 @@ def handle_new_report_submission(ack, context, body, client, view):
 
     problem.create_private_channel(client)
     problem.invite_to_private_channel(client, requester)
-    problem.send_summary(client)
+    problem.send_summary_message(client, text="Hey, we have received your request and will forward it to our Engineer")
     problem.notify_responder()
 
 

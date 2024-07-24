@@ -131,7 +131,9 @@ class Problem(object):
             problem_type_key="",
             priority="",
             requester={},
-            additional_info=""
+            additional_info="",
+            channel_id=None,
+            message_ts=None
     ):
         self.problem_type = self.ProblemType.get(problem_type_key)
         self.priority = self.Priority(priority)
@@ -140,6 +142,8 @@ class Problem(object):
         self.created_at = datetime.now()
         self.acknowledge_at = None
         self.responders = None
+        self.channel_id = channel_id
+        self.message_ts = message_ts
 
     def create_private_channel(self, slack_client, members=[]):
         channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
@@ -157,55 +161,59 @@ class Problem(object):
             users=member['id']
         )
 
-    def send_summary(self, slack_client):
+    def prepare_summary_message_attachment(self):
+        return [
+            {
+                "color": "#FF0000",
+                "blocks": [
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Problem Description*\n%s" % str(self.problem_type)
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Component/Service*\n%s" % str(self.problem_type.component)
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Requested By*\n@%s" % self.requester['name']
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Priority*\n%s" % str(self.priority)
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Requested at*\n%s" % self.created_at
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Acknowledge at*\n%s" % self.acknowledge_at
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Responders*\n%s" % self.responders
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": "*Additional Info*\n%s" % self.additional_info
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
 
+    def send_summary_message(self, slack_client, text):
+
+        attachments = self.prepare_summary_message_attachment()
         message = slack_client.chat_postMessage(
             channel=self.channel_id,
-            text="Hey, we have received your request and will forward it to our Engineer",
-            attachments=[
-                {
-                    "color": "#FF0000",
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Problem Description*\n%s" % str(self.problem_type)
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Component/Service*\n%s" % str(self.problem_type.component)
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Requested By*\n@%s" % self.requester['name']
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Priority*\n%s" % str(self.priority)
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Requested at*\n%s" % self.created_at
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Acknowledge at*\n%s" % self.acknowledge_at
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Responders*\n%s" % self.responders
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "*Additional Info*\n%s" % self.additional_info
-                                },
-                            ]
-                        }
-                    ]
-                }
-            ]
+            text=text,
+            attachments=attachments
         )
 
         self.message_ts = message['ts']
