@@ -218,6 +218,25 @@ class Problem(object):
 
         self.message_ts = message['ts']
 
+    def update_summary_message(self, slack_client, text):
+        attachments = self.prepare_summary_message_attachment()
+        slack_client.chat_update(
+            channel=self.channel_id,
+            ts=self.message_ts,
+            text=text,
+            attachments=attachments
+        )
+
     def notify_responder(self):
         opsgenie = OpsgenieResponder()
         opsgenie.notify(self)
+
+    def acknowledge(self, acknowledge_at, responder):
+        self.acknowledge_at = acknowledge_at
+        self.responders = responder
+
+    def send_acknowledged_message(self, slack_client):
+        slack_client.chat_postMessage(
+            channel=self.channel_id,
+            text="Our Responder had received and acknowledge your report. They will contact you soon",
+        )
