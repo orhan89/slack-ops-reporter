@@ -1,10 +1,7 @@
-from slack_ops_reporter.responders import OpsgenieResponder
 from datetime import datetime
 
 import csv
 import urllib.parse
-import random
-import string
 
 
 class CSVProblemTypeProvider(object):
@@ -17,7 +14,7 @@ class CSVProblemTypeProvider(object):
             reader = csv.reader(csvfile)
             rows = list(reader)
 
-        self.problem_types = map(lambda row: Problem.ProblemType(row[0], row[1]), rows)
+        self.problem_types = list(map(lambda row: Problem.ProblemType(row[0], row[1]), rows))
 
 
 class Problem(object):
@@ -41,7 +38,7 @@ class Problem(object):
             return self._key
 
         @staticmethod
-        def list(keyword, provider=CSVProblemTypeProvider()):
+        def list(provider, keyword):
 
             unique_component = []
             for problem_type in provider.problem_types:
@@ -78,7 +75,7 @@ class Problem(object):
             return self._key
 
         @staticmethod
-        def list(component_key=None, keyword=None, provider=CSVProblemTypeProvider()):
+        def list(provider, component_key=None, keyword=None):
 
             problem_types = sorted(provider.problem_types, key=lambda problem_type: str(problem_type))
             if component_key is not None:
@@ -90,7 +87,7 @@ class Problem(object):
             return problem_types
 
         @staticmethod
-        def get(key, provider=CSVProblemTypeProvider()):
+        def get(provider, key):
             try:
                 problem_type = next(filter(lambda problem_type: problem_type.key == key, provider.problem_types))
             except StopIteration:
@@ -128,115 +125,34 @@ class Problem(object):
 
     def __init__(
             self,
+            provider,
             problem_type_key="",
             priority="",
             requester={},
             additional_info="",
+            created_at=None,
             channel_id=None,
             message_ts=None
     ):
-        self.problem_type = self.ProblemType.get(problem_type_key)
+        self.provider = provider
+        self.problem_type = self.ProblemType.get(provider, problem_type_key)
         self.priority = self.Priority(priority)
         self.requester = requester
         self.additional_info = additional_info
-        self.created_at = datetime.now()
+        if created_at is None:
+            created_at = datetime.now()
+        self.created_at = created_at
         self.acknowledge_at = None
         self.responders = None
         self.channel_id = channel_id
         self.message_ts = message_ts
 
-    def create_private_channel(self, slack_client, members=[]):
-        channel_name = "ops_" + ''.join(random.choice(string.ascii_lowercase+string.digits) for i in range(5))
+    def set_channel_id(self, channel_id):
+        self.channel_id = channel_id
 
-        channel = slack_client.conversations_create(
-            name=channel_name,
-            is_private=True
-        )
-
-        self.channel_id = channel.data['channel']['id']
-
-    def invite_to_private_channel(self, slack_client, member):
-        slack_client.conversations_invite(
-            channel=self.channel_id,
-            users=member['id']
-        )
-
-    def prepare_summary_message_attachment(self):
-        return [
-            {
-                "color": "#FF0000",
-                "blocks": [
-                    {
-                        "type": "section",
-                        "fields": [
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Problem Description*\n%s" % str(self.problem_type)
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Component/Service*\n%s" % str(self.problem_type.component)
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Requested By*\n@%s" % self.requester['name']
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Priority*\n%s" % str(self.priority)
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Requested at*\n%s" % self.created_at
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Acknowledge at*\n%s" % self.acknowledge_at
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Responders*\n%s" % self.responders
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Additional Info*\n%s" % self.additional_info
-                            },
-                        ]
-                    }
-                ]
-            }
-        ]
-
-    def send_summary_message(self, slack_client, text):
-
-        attachments = self.prepare_summary_message_attachment()
-        message = slack_client.chat_postMessage(
-            channel=self.channel_id,
-            text=text,
-            attachments=attachments
-        )
-
-        self.message_ts = message['ts']
-
-    def update_summary_message(self, slack_client, text):
-        attachments = self.prepare_summary_message_attachment()
-        slack_client.chat_update(
-            channel=self.channel_id,
-            ts=self.message_ts,
-            text=text,
-            attachments=attachments
-        )
-
-    def notify_responder(self):
-        opsgenie = OpsgenieResponder()
-        opsgenie.notify(self)
+    def set_summary_message_ts(self, message_ts):
+        self.message_ts = message_ts
 
     def acknowledge(self, acknowledge_at, responder):
         self.acknowledge_at = acknowledge_at
         self.responders = responder
-
-    def send_acknowledged_message(self, slack_client):
-        slack_client.chat_postMessage(
-            channel=self.channel_id,
-            text="Our Responder had received and acknowledge your report. They will contact you soon",
-        )

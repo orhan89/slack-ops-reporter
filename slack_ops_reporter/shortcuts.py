@@ -1,5 +1,12 @@
-from slack_ops_reporter import app
+from slack_ops_reporter import app, defaultProblemTypeProvider
 from slack_ops_reporter.problems import Problem
+from slack_ops_reporter.responders import OpsgenieResponder
+from slack_ops_reporter.slack_helpers import \
+    prepare_option, \
+    prepare_priority_options, \
+    create_private_channel, \
+    invite_to_private_channel, \
+    send_summary_message
 
 import logging
 import os
@@ -48,7 +55,7 @@ def message_hello(ack, shortcut, client):
 def component_options(ack, context, payload):
     keyword = payload.get("value")
 
-    components = Problem.Component.list(keyword)
+    components = Problem.Component.list(defaultProblemTypeProvider, keyword)
     options = [prepare_option(str(item), item.key) for item in components]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
@@ -151,7 +158,7 @@ def problem_options(ack, context, payload, options, body):
 
     component_key = options["block_id"].lstrip("problem_input:")
 
-    problem_types = Problem.ProblemType.list(component_key, keyword)
+    problem_types = Problem.ProblemType.list(defaultProblemTypeProvider, component_key, keyword)
     options = [prepare_option(str(item), item.key) for item in problem_types]
     options.append(prepare_option("Other", "other"))
     ack(options=options)
@@ -167,29 +174,15 @@ def handle_new_report_submission(ack, context, body, client, view):
     additional_info = view['state']['values']['additional_info_input']['additional_info_input']['value']
 
     requester = body['user']
-    problem = Problem(problem_type_key, priority_key, requester, additional_info)
+    problem = Problem(defaultProblemTypeProvider, problem_type_key, priority_key, requester, additional_info)
 
-    problem.create_private_channel(client)
-    problem.invite_to_private_channel(client, requester)
-    problem.send_summary_message(client, text="Hey, we have received your request and will forward it to our Engineer")
-    problem.notify_responder()
+    channel_id = create_private_channel(client)
+    problem.set_channel_id(channel_id)
 
+    invite_to_private_channel(client, channel_id, requester)
 
-def prepare_option(text, value):
-    return {
-        "text": {"type": "plain_text", "text": text},
-        "value": value
-    }
+    message_ts = send_summary_message(client, problem, text="Hey, we have received your request and will forward it to our Engineer")
+    problem.set_summary_message_ts(message_ts)
 
-
-def prepare_priority_options():
-    options = []
-    for priority in Problem.Priority.list_priorities():
-        options.append({
-            "text": {
-                "type": "plain_text",
-                "text": str(priority)
-            },
-            "value": priority.key
-        })
-    return options
+    responder = OpsgenieResponder()
+    responder.notify(problem)
