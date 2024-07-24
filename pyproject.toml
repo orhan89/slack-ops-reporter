@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "app"
+name = "slack_ops_reporter"
 version = "0.1.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
@@ -11,6 +11,7 @@ python = "^3.11"
 slack-bolt = "^1.19.1"
 opsgenie-sdk = "^2.1.5"
 flask = "^3.0.3"
+gunicorn = "^22.0.0"
 
 
 [build-system]
